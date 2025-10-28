@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Simulador de Rayos X - Efecto Compton</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background: #f4f4f4;
+    }
+
+    h1 {
+      text-align: center;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: auto;
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px #ccc;
+    }
+
+    label, input, button {
+      display: block;
+      width: 100%;
+      margin: 10px 0;
+    }
+
+    input[type="number"], input[type="range"] {
+      padding: 8px;
+    }
+
+    button {
+      padding: 10px;
+      background-color: #0066cc;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+    }
+
+    button:hover {
+      background-color: #005bb5;
+    }
+
+    .results {
+      margin-top: 20px;
+    }
+
+    .result-item {
+      margin-bottom: 10px;
+    }
+
+    canvas {
+      margin-top: 20px;
+      background: #f9f9f9;
+      border: 1px solid #ccc;
+    }
+
+    .slider-group {
+      margin: 10px 0;
+    }
+
+    code {
+      background-color: #eee;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>Simulador de Rayos X - Efecto Compton</h1>
+
+  <label for="energia">Energía del fotón incidente (E₀) en keV:</label>
+  <input type="number" id="energia" value="100" step="0.1">
+
+  <div class="slider-group">
+    <label for="anguloSlider">Ángulo de dispersión del fotón (θ): <span id="anguloValor">45</span>°</label>
+    <input type="range" id="anguloSlider" min="0" max="180" value="45" step="1" oninput="actualizarAngulo(this.value)">
+  </div>
+
+  <button onclick="iniciarAnimacion()">▶ Animar dispersión</button>
+
+  <div class="results" id="resultados"></div>
+
+  <canvas id="grafica" width="500" height="500"></canvas>
+</div>
+
+<script>
+let theta_deg = 45;
+let animacionActiva = false;
+let intervaloAnimacion;
+
+function actualizarAngulo(valor) {
+  theta_deg = parseFloat(valor);
+  document.getElementById("anguloValor").innerText = valor;
+  calcular();
+}
+
+function calcular() {
+  const h = 6.626e-34;
+  const c = 3e8;
+  const me = 9.11e-31;
+  const eV = 1.602e-19;
+
+  let E0_keV = parseFloat(document.getElementById("energia").value);
+  if (isNaN(E0_keV)) {
+    alert("Por favor, introduce una energía válida.");
+    return;
+  }
+
+  let E0_J = E0_keV * 1e3 * eV;
+  let lambda0 = (h * c) / E0_J;
+  let theta_rad = theta_deg * Math.PI / 180;
+
+  let delta_lambda = (h / (me * c)) * (1 - Math.cos(theta_rad));
+  let lambda_p = lambda0 + delta_lambda;
+  let E_p_J = (h * c) / lambda_p;
+  let E_p_keV = E_p_J / (1e3 * eV);
+  let Ke_J = E0_J - E_p_J;
+  let Ke_keV = Ke_J / (1e3 * eV);
+  let p0 = E0_J / c;
+  let p_p = E_p_J / c;
+  let tan_phi = (p_p * Math.sin(theta_rad)) / (p0 - p_p * Math.cos(theta_rad));
+  let phi_rad = Math.atan(tan_phi);
+  let phi_deg = phi_rad * 180 / Math.PI;
+
+  // Guardamos para animación
+  window.simDatos = {
+    theta: theta_rad,
+    phi: phi_rad
+  };
+
+  // Mostrar resultados
+  let resultados = `
+    <div class="result-item"><strong>Longitud de onda incidente (λ₀):</strong> ${(lambda0 * 1e9).toFixed(4)} nm</div>
+    <div class="result-item"><strong>Longitud de onda dispersada (λ'):</strong> ${(lambda_p * 1e9).toFixed(4)} nm</div>
+    <div class="result-item"><strong>Energía del fotón dispersado (E'):</strong> ${E_p_keV.toFixed(4)} keV</div>
+    <div class="result-item"><strong>Energía cinética del electrón (Kₑ):</strong> ${Ke_keV.toFixed(4)} keV</div>
+    <div class="result-item"><strong>Cantidad de movimiento del fotón incidente (p₀):</strong> ${p0.toExponential(4)} kg·m/s</div>
+    <div class="result-item"><strong>Cantidad de movimiento del fotón dispersado (p'):</strong> ${p_p.toExponential(4)} kg·m/s</div>
+    <div class="result-item"><strong>Ángulo de dispersión del electrón (φ):</strong> ${phi_deg.toFixed(2)}°</div>
+  `;
+  document.getElementById("resultados").innerHTML = resultados;
+
+  dibujarEstatico(window.simDatos.theta, window.simDatos.phi);
+}
+
+function dibujarEstatico(theta, phi) {
+  const canvas = document.getElementById("grafica");
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+  const r = 100;
+
+  ctx.fillStyle = "#000";
+  ctx.beginPath();
+  ctx.arc(cx, cy, 5, 0, 2 * Math.PI);
+  ctx.fill();
+
+  // Fotón incidente
+  ctx.strokeStyle = "#0000cc";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx - r * 1.5, cy);
+  ctx.lineTo(cx, cy);
+  ctx.stroke();
+  ctx.fillText("Fotón incidente", cx - r * 1.7, cy - 10);
+
+  // Fotón dispersado
+  let x1 = cx + r * Math.cos(theta);
+  let y1 = cy - r * Math.sin(theta);
+  ctx.strokeStyle = "#cc0000";
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(x1, y1);
+  ctx.stroke();
+  ctx.fillText("Fotón dispersado", x1 + 5, y1);
+
+  // Electrón dispersado
+  let x2 = cx + r * Math.cos(phi + Math.PI);
+  let y2 = cy - r * Math.sin(phi + Math.PI);
+  ctx.strokeStyle = "#00aa00";
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  ctx.fillText("Electrón", x2 - 60, y2);
+
+  ctx.fillStyle = "#000";
+  ctx.fillText("Centro: electrón antes del impacto", cx - 80, cy + 140);
+}
+
+function iniciarAnimacion() {
+  if (animacionActiva) return;
+
+  const canvas = document.getElementById("grafica");
+  const ctx = canvas.getContext("2d");
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+  const r = 100;
+
+  let t = 0;
+  let photonX = cx - 150;
+  let electronStarted = false;
+
+  animacionActiva = true;
+
+  const theta = window.simDatos.theta;
+  const phi = window.simDatos.phi;
+
+  intervaloAnimacion = setInterval(() => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Punto inicial (electrón en reposo)
+    ctx.fillStyle = "#000";
+    ctx.beginPath();
+    ctx.arc(cx, cy, 5, 0, 2 * Math.PI);
+    ctx.fill();
+
+    if (photonX < cx && !electronStarted) {
+      // Fotón incidente moviéndose hacia el electrón
+      ctx.strokeStyle = "#0000cc";
+      ctx.beginPath();
+      ctx.moveTo(photonX, cy);
+      ctx.lineTo(photonX + 10, cy);
+      ctx.stroke();
+      photonX += 5;
+    } else {
+      electronStarted = true;
+
+      // Fotón dispersado
+      let px = cx + t * Math.cos(theta);
+      let py = cy - t * Math.sin(theta);
+      ctx.strokeStyle = "#cc0000";
+      ctx.beginPath();
+      ctx.arc(px, py, 4, 0, 2 * Math.PI);
+      ctx.fill();
+
+      // Electrón dispersado
+      let ex = cx + t * Math.cos(phi + Math.PI);
+      let ey = cy - t * Math.sin(phi + Math.PI);
+      ctx.strokeStyle = "#00aa00";
+      ctx.beginPath();
+      ctx.arc(ex, ey, 5, 0, 2 * Math.PI);
+      ctx.fill();
+
+      t += 3;
+    }
+
+    // Detener animación después de cierto tiempo
+    if (t > 120) {
+      clearInterval(intervaloAnimacion);
+      animacionActiva = false;
+    }
+
+    // Etiquetas
+    ctx.fillStyle = "#000";
+    ctx.fillText("Fotón incidente", cx - 150, cy - 10);
+    ctx.fillText("Centro: electrón antes del impacto", cx - 80, cy + 140);
+  }, 30);
+}
+</script>
+
+<h1> Equipo 4 </h1>
+<p> Integrantes: </p>
+<ul>
+  <li> Edgar Eduardo Leyva Ramirez 1939283 </li>
+  <li> José Eduardo Ortiz Alfaro 2066648 </li>
+  <li> Gabriela </li>
+  <li> Abelardo Emanuel Juarez Lopez 2069422 </li>
+</body>
+</html>
